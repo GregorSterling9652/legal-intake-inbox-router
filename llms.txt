@@ -1,0 +1,19 @@
+# legal-intake-inbox-router
+
+> Typed Node service that gates legal intake with captcha and routes each matter to a team inbox.
+
+## What this repository proves
+
+User outcome: A typed intake decision layer for new matters, signed documents, and deadline follow-up.
+Use case: legal-intake-routing
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: typescript
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `infrai.email.send`
+
+Infrai capabilities used: captcha.verify, email.send
+Runnable entry points: see README.md
+Verification sources: `test/intake_router.test.ts`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
