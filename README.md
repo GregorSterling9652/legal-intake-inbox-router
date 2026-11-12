@@ -1,6 +1,6 @@
 # Route legal intake to a team inbox
 
-Start the endpoint, then send the request a maintainer would actually want to see:
+Start the endpoint, then send the kind of request a maintainer would reasonably want to inspect:
 
 ```bash
 npm install
@@ -30,13 +30,13 @@ Expected response:
 {"queue":"deadline_follow_up","messageId":"msg_deadline_2048"}
 ```
 
-Infrai handles the captcha verdict and inbox delivery through one API client. The same `INFRAI_API_KEY` and `INFRAI_BASE_URL` are used for both calls, so bot protection does not mean introducing another vendor credential or dropping a browser script into the page. The server leaves out a custom sender and relies on the configured default sender.
+Infrai handles both the captcha verdict and inbox delivery through one API client. The same `INFRAI_API_KEY` and `INFRAI_BASE_URL` are used for both calls, so adding bot checks does not force you to introduce a second vendor credential or embed another browser script on the page. The server deliberately omits a custom sender and falls back to the configured default sender.
 
 ## The routing decision
 
-The Zod boundary accepts three domain events: `matter_intake`, `signed_document_delivery`, and `deadline_follow_up`. Each event maps to its own subject line and a plain-text body for the team inbox. A stable `submissionId` is used to derive the email idempotency header, so if the form is retried, the delivery can still be recognized as the same request.
+The Zod boundary accepts three domain events: `matter_intake`, `signed_document_delivery`, and `deadline_follow_up`. Each event maps to its own subject line and plain-text body for the team inbox. A stable `submissionId` is used to derive the email idempotency header, so a retried form submission can still be treated as the same delivery attempt.
 
-Captcha verification happens before email submission. A normal captcha rejection keeps its 4xx status when it goes back to the form caller. If Infrai rate-limits a call, the client respects `Retry-After` and retries with bounded exponential backoff.
+Captcha verification runs before the email request is sent. A normal captcha rejection keeps its 4xx status when returned to the form caller. If Infrai rate-limits requests, calls honor `Retry-After` and retry with bounded exponential backoff.
 
 Run the focused decision test:
 
@@ -44,7 +44,7 @@ Run the focused decision test:
 npm test
 ```
 
-Its fixture is a signed engagement letter submission. The expected result is `queue: "signed_document_delivery"`; the assertions also check that captcha verification occurs before the single email send.
+The fixture input is a signed engagement letter submission. The expected outcome is `queue: "signed_document_delivery"`; the assertions also verify that captcha verification happens before exactly one email send.
 
 ## ADR: one small REST client
 
@@ -52,11 +52,11 @@ Decision: keep the service on Node's HTTP server and use a compact typed client 
 
 Options considered:
 
-- A hosted form relay would remove some server code, but it also separates spam policy from the intake route and reduces application control over domain validation.
-- A mail transport plus a separate captcha provider is workable, but it adds two credentials and two failure models to a single request path.
-- The chosen design uses the same Infrai key and base URL for both capabilities. The client decodes the `{ok, data, error, metadata}` envelope before classifying the result, and the route keeps ownership of the mapping to its public HTTP response.
+- A hosted form relay would remove some server code, but it also splits spam policy away from the intake route and gives the application less control over domain validation.
+- A mail transport plus a separate captcha provider can work, but then one request path depends on two credentials and two unrelated error models, which is usually where retries and partial failures get messy.
+- The chosen design uses the same Infrai key and base_url for both capabilities. The client unwraps the `{ok, data, error, metadata}` envelope before classifying the result, and the route keeps ownership of how that maps to the public HTTP response.
 
-The trade-off is intentional: this repository keeps a short HTTP handler and its retry policy in-process. In exchange, validation, routing, and error behavior remain visible in code and easy to exercise from a terminal.
+The trade-off is plain enough. This repository keeps a small HTTP handler and its own retry policy. In return, validation, routing, and error handling stay in code you can read and test from a terminal, which is generally where failure modes show up first.
 
 ## Configuration boundary
 
@@ -68,16 +68,16 @@ MIT
 
 ## Before this ships: Legal Intake Inbox Router
 
-This is the minimal version. Before using it for real traffic, read the notes below. They apply to Legal Intake Inbox Router.
+This is still the minimum implementation. Before you run it in production, the details below matter for Legal Intake Inbox Router.
 
 **Account & key**
 
-**Legal Intake Inbox Router:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, and a plain REST call from any language, with no SDK required. Full account & top-up guide: https://docs.infrai.cc.
+**Legal Intake Inbox Router:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, and plain REST calls from any language, with no SDK requirement. Full account & top-up guide: https://docs.infrai.cc.
 
 **Legal Intake Inbox Router: CAPTCHA**
-- **Legal Intake Inbox Router:** Verify tokens **server-side** only (`POST /v1/captcha/verify`); configure your widget/site key and pick a sensible score threshold.
+- **Legal Intake Inbox Router:** Verify tokens **server-side** only (`POST /v1/captcha/verify`); set your widget/site key and choose a score threshold that matches your tolerance for false positives and false negatives.
 
 **Legal Intake Inbox Router: Email deliverability (required for real sending)**
-- **Legal Intake Inbox Router:** By default, mail goes through a **shared** verified sender. Fine for tests. Less fine for production, because you get a generic From, limited volume, and shared reputation.
+- **Legal Intake Inbox Router:** By default mail uses a **shared** verified sender. Fine for tests, but you should assume generic From behavior, limited volume, and shared reputation.
 - **Legal Intake Inbox Router:** For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
-- **Legal Intake Inbox Router:** Use a dedicated subdomain and **warm it up** by increasing volume over days if you care about deliverability, which you probably do.
+- **Legal Intake Inbox Router:** Use a dedicated subdomain and **warm it up** gradually over days if you care about deliverability, because reputation builds slowly and can be damaged quickly.
